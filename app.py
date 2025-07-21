@@ -1,33 +1,33 @@
-from flask import Flask, render_template, Response, jsonify
-import gunicorn
-from camera import *
+from flask import Flask, jsonify
+from config import Config
+from models import db, User, EmotionLog
+from utils.spotify import get_spotify_token, get_playlist_for_emotion
 
 app = Flask(__name__)
+app.config.from_object(Config)
+db.init_app(app)
 
-headings = ("Name","Album","Artist")
-df1 = music_rec()
-df1 = df1.head(15)
 @app.route('/')
-def index():
-    print(df1.to_json(orient='records'))
-    return render_template('index.html', headings=headings, data=df1)
+def home():
+    return jsonify({"message": "API is live!"})
 
-def gen(camera):
-    while True:
-        global df1
-        frame, df1 = camera.get_frame()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
+@app.route('/create_user/<email>')
+def create_user(email):
+    user = User(email=email, consent_given=True)
+    db.session.add(user)
+    db.session.commit()
+    return jsonify({"user_id": user.id})
 
-@app.route('/video_feed')
-def video_feed():
-    return Response(gen(VideoCamera()),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
+@app.route('/log_emotion/<int:user_id>/<emotion>')
+def log_emotion(user_id, emotion):
+    db.session.add(EmotionLog(user_id=user_id, emotion=emotion))
+    db.session.commit()
+    playlist_id = get_playlist_for_emotion(emotion)
+    return jsonify({"message": f"Logged {emotion}", "spotify_playlist": playlist_id})
 
-@app.route('/t')
-def gen_table():
-    return df1.to_json(orient='records')
+with app.app_context():
+    db.create_all()
+    print("Database initialized!")
 
 if __name__ == '__main__':
-    app.debug = True
-    app.run()
+    app.run(debug=True)
