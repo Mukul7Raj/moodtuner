@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion-Based Music Recommender</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="dark-theme">
+    <div class="container">
+        <div class="header">
+            <img src="{{ url_for('static', filename='josh_emo_musics_logo.png') }}" alt="JOSH Emo Musics Logo" class="logo">
+            <h1>Emotion-Based Music Recommender</h1>
+            <div class="header-controls">
+                <div class="focus-timer">
+                    <h4 class="timer-heading">Focus Mode Timer: <span id="total-time">0:00:00</span></h4>
+                    <button id="play-pause"><i class="fas fa-play"></i> Start</button>
+                    <button id="reset-timer"><i class="fas fa-redo"></i> Reset</button>
+                </div>
+                <div class="header-buttons">
+                    <button id="theme-toggle"><i class="fas fa-adjust"></i> Theme</button>
+                    <button id="todo-toggle"><i class="fas fa-tasks"></i> To-Do</button>
+                </div>
+            </div>
+        </div>
+        <div class="main-content">
+            <div class="left-section">
+                <div class="search-section">
+                    <h2><i class="fas fa-search"></i> Search Music</h2>
+                    <div class="search-input">
+                        <input type="text" id="search-input" placeholder="Search for a song or artist...">
+                        <button id="search-button"><i class="fas fa-search"></i></button>
+                    </div>
+                    <button id="voice-search"><i class="fas fa-microphone"></i> Voice Search</button>
+                </div>
+                <div class="webcam-section">
+                    <h2><i class="fas fa-camera"></i> Your Webcam Feed</h2>
+                    <div class="camera-controls">
+                        <button id="start-camera"><i class="fas fa-play"></i> Start Camera</button>
+                        <button id="capture-image" style="display: none;"><i class="fas fa-camera-retro"></i> Capture Image</button>
+                    </div>
+                    <div class="webcam-container">
+                        <img id="video-feed" src="" alt="Webcam Feed" style="display: none;">
+                        <img id="face-logo" src="{{ url_for('static', filename='face_logo.png') }}" alt="Face Logo">
+                    </div>
+                </div>
+                <div class="result-section" style="display: none;">
+                    <h2><i class="fas fa-smile"></i> Detected Mood: <span id="emotion">None</span> (Class: <span id="emotion-class">None</span>)</h2>
+                </div>
+                <div class="emotion-history" style="display: none;">
+                    <h2><i class="fas fa-chart-bar"></i> Emotion History</h2>
+                    <canvas id="emotion-chart"></canvas>
+                </div>
+            </div>
+            <div class="right-section">
+                <div class="player-section" style="display: none;">
+                    <h2><i class="fas fa-music"></i> Currently Playing Song</h2>
+                    <div class="player-box">
+                        <iframe id="music-player" width="100%" height="200" src="" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+                        <div class="player-info">
+                            <h3 id="song-title">No song playing</h3>
+                            <p id="autoplay-notice" style="display: none; color: #ffeb3b; font-size: 0.9em;">Note: Autoplay may be blocked by your browser. Please click the play button in the player above to start the song.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="video-list" style="display: none;">
+                    <h2><i class="fas fa-list-ul"></i> Recommended Songs</h2>
+                    <div class="youtube-results">
+                        <h3>YouTube Results</h3>
+                        <ul id="youtube-video-list"></ul>
+                    </div>
+                    <div class="spotify-results">
+                        <h3>Spotify Results</h3>
+                        <ul id="spotify-track-list"></ul>
+                    </div>
+                </div>
+                <div class="search-results" style="display: none;">
+                    <h2><i class="fas fa-search"></i> Search Results</h2>
+                    <div class="youtube-results">
+                        <h3>YouTube Results</h3>
+                        <ul id="youtube-search-results"></ul>
+                    </div>
+                    <div class="spotify-results">
+                        <h3>Spotify Results</h3>
+                        <ul id="spotify-search-results"></ul>
+                    </div>
+                </div>
+                <div class="liked-videos" style="{% if not liked_videos %}display: none;{% endif %}">
+                    <h2><i class="fas fa-heart"></i> My Liked Songs</h2>
+                    <ul id="liked-videos">
+                        {% for video in liked_videos %}
+                            <li>
+                                <a href="{{ video.embed_link }}" target="_blank">{{ video.title }}</a>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            <div class="todo-panel" id="todo-panel">
+                <div class="todo-header">
+                    <h2><i class="fas fa-tasks"></i> To-Do List</h2>
+                    <button id="todo-close"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="todo-input-section">
+                    <h2><i class="fas fa-tasks"></i> To-Do</h2>
+                    <div class="todo-input">
+                        <input type="text" id="todo-input" placeholder="Add a new task...">
+                        <button id="todo-add"><i class="fas fa-plus"></i></button>
+                    </div>
+                </div>
+                <ul id="todo-list"></ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const videoFeed = document.getElementById('video-feed');
+        const faceLogo = document.getElementById('face-logo');
+        const startButton = document.getElementById('start-camera');
+        const captureButton = document.getElementById('capture-image');
+        const voiceSearchButton = document.getElementById('voice-search');
+        const searchInput = document.getElementById('search-input');
+        const searchButton = document.getElementById('search-button');
+        const musicPlayer = document.getElementById('music-player');
+        const playPauseButton = document.getElementById('play-pause');
+        const totalTimeDisplay = document.getElementById('total-time');
+        const resetTimerButton = document.getElementById('reset-timer');
+        const focusTimer = document.querySelector('.focus-timer');
+        const todoPanel = document.getElementById('todo-panel');
+        const todoToggle = document.getElementById('todo-toggle');
+        const todoClose = document.getElementById('todo-close');
+        const todoInput = document.getElementById('todo-input');
+        const todoAdd = document.getElementById('todo-add');
+        const todoList = document.getElementById('todo-list');
+        const autoplayNotice = document.getElementById('autoplay-notice');
+        let isPlaying = false;
+        let currentVideoIndex = 0;
+        let videos = [];
+        let totalTime = parseInt(localStorage.getItem('totalTime')) || 0;
+        let timerInterval;
+        let timerRunning = false;
+        let emotionHistory = JSON.parse(localStorage.getItem('emotionHistory')) || [];
+        let emotionChart;
+
+        // Initialize Chart.js for emotion history
+        function initializeEmotionChart() {
+            const ctx = document.getElementById('emotion-chart').getContext('2d');
+            const emotionCounts = {};
+            ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral'].forEach(emotion => {
+                emotionCounts[emotion] = 0;
+            });
+            emotionHistory.forEach(entry => {
+                emotionCounts[entry.emotion]++;
+            });
+
+            emotionChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(emotionCounts),
+                    datasets: [{
+                        label: 'Emotion Frequency',
+                        data: Object.values(emotionCounts),
+                        backgroundColor: [
+                            'rgba(255, 99, 132, 0.6)',
+                            'rgba(54, 162, 235, 0.6)',
+                            'rgba(255, 206, 86, 0.6)',
+                            'rgba(75, 192, 192, 0.6)',
+                            'rgba(153, 102, 255, 0.6)',
+                            'rgba(255, 159, 64, 0.6)',
+                            'rgba(199, 199, 199, 0.6)'
+                        ],
+                        borderColor: [
+                            'rgba(255, 99, 132, 1)',
+                            'rgba(54, 162, 235, 1)',
+                            'rgba(255, 206, 86, 1)',
+                            'rgba(75, 192, 192, 1)',
+                            'rgba(153, 102, 255, 1)',
+                            'rgba(255, 159, 64, 1)',
+                            'rgba(199, 199, 199, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Frequency'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Emotion'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateEmotionChart(emotion) {
+            emotionHistory.push({ emotion: emotion, timestamp: Date.now() });
+            localStorage.setItem('emotionHistory', JSON.stringify(emotionHistory));
+            const emotionCounts = {};
+            ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral'].forEach(emotion => {
+                emotionCounts[emotion] = 0;
+            });
+            emotionHistory.forEach(entry => {
+                emotionCounts[entry.emotion]++;
+            });
+            emotionChart.data.datasets[0].data = Object.values(emotionCounts);
+            emotionChart.update();
+        }
+
+        // Stopwatch Timer (Independent of Video Playback)
+        function updateTimer() {
+            totalTime++;
+            localStorage.setItem('totalTime', totalTime);
+            const hours = Math.floor(totalTime / 3600);
+            const minutes = Math.floor((totalTime % 3600) / 60);
+            const seconds = totalTime % 60;
+            totalTimeDisplay.innerText = `${hours}:${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+        }
+
+        function startTimer() {
+            if (!timerRunning) {
+                timerInterval = setInterval(updateTimer, 1000);
+                timerRunning = true;
+                playPauseButton.innerHTML = '<i class="fas fa-pause"></i> Pause';
+                playPauseButton.classList.remove('glow');
+                void playPauseButton.offsetWidth; // Reset animation
+                playPauseButton.classList.add('glow');
+            }
+        }
+
+        function stopTimer() {
+            if (timerRunning) {
+                clearInterval(timerInterval);
+                timerRunning = false;
+                playPauseButton.innerHTML = '<i class="fas fa-play"></i> Start';
+                playPauseButton.classList.remove('glow');
+                void playPauseButton.offsetWidth; // Reset animation
+                playPauseButton.classList.add('glow');
+            }
+        }
+
+        function resetTimer() {
+            stopTimer();
+            totalTime = 0;
+            localStorage.setItem('totalTime', totalTime);
+            updateTimer();
+        }
+
+        // Initialize timer display
+        updateTimer();
+
+        // Focus Mode Timer Controls (Independent)
+        playPauseButton.addEventListener('click', () => {
+            if (timerRunning) {
+                stopTimer();
+            } else {
+                startTimer();
+            }
+        });
+
+        resetTimerButton.addEventListener('click', () => {
+            resetTimer();
+        });
+
+        // To-Do List with Checkbox
+        function loadTodos() {
+            const todos = JSON.parse(localStorage.getItem('todos')) || [];
+            todoList.innerHTML = '';
+            todos.forEach((taskObj, index) => {
+                const task = typeof taskObj === 'string' ? { text: taskObj, completed: false } : taskObj;
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <input type="checkbox" class="task-checkbox" ${task.completed ? 'checked' : ''}>
+                    <span class="task-text" contenteditable="false" style="${task.completed ? 'text-decoration: line-through;' : ''}">${task.text}</span>
+                    <div class="task-actions">
+                        <button class="edit-task"><i class="fas fa-edit"></i></button>
+                        <button class="delete-task"><i class="fas fa-trash"></i></button>
+                    </div>
+                `;
+                todoList.appendChild(li);
+
+                li.querySelector('.task-checkbox').addEventListener('change', (e) => {
+                    const taskText = li.querySelector('.task-text');
+                    if (e.target.checked) {
+                        taskText.style.textDecoration = 'line-through';
+                    } else {
+                        taskText.style.textDecoration = 'none';
+                    }
+                    todos[index] = { text: taskText.innerText, completed: e.target.checked };
+                    localStorage.setItem('todos', JSON.stringify(todos));
+                });
+
+                li.querySelector('.edit-task').addEventListener('click', () => {
+                    const taskText = li.querySelector('.task-text');
+                    if (taskText.isContentEditable) {
+                        taskText.contentEditable = false;
+                        taskText.classList.remove('editing');
+                        todos[index].text = taskText.innerText;
+                        localStorage.setItem('todos', JSON.stringify(todos));
+                    } else {
+                        taskText.contentEditable = true;
+                        taskText.classList.add('editing');
+                        taskText.focus();
+                    }
+                });
+
+                li.querySelector('.delete-task').addEventListener('click', () => {
+                    todos.splice(index, 1);
+                    localStorage.setItem('todos', JSON.stringify(todos));
+                    loadTodos();
+                });
+            });
+        }
+
+        todoAdd.addEventListener('click', () => {
+            const task = todoInput.value.trim();
+            if (task) {
+                const todos = JSON.parse(localStorage.getItem('todos')) || [];
+                todos.push({ text: task, completed: false });
+                localStorage.setItem('todos', JSON.stringify(todos));
+                todoInput.value = '';
+                loadTodos();
+            }
+        });
+
+        todoInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                todoAdd.click();
+            }
+        });
+
+        todoToggle.addEventListener('click', () => {
+            todoPanel.classList.add('open');
+        });
+
+        todoClose.addEventListener('click', () => {
+            todoPanel.classList.remove('open');
+        });
+
+        // Load todos on page load
+        loadTodos();
+
+        // Initialize emotion chart on page load
+        initializeEmotionChart();
+
+        // Webcam Functionality
+        startButton.addEventListener('click', () => {
+            videoFeed.src = "";
+            fetch('/start_camera', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        const timestamp = new Date().getTime();
+                        videoFeed.src = "{{ url_for('video_feed') }}?t=" + timestamp;
+                        videoFeed.style.display = 'block';
+                        faceLogo.style.display = 'none';
+                        startButton.style.display = 'none';
+                        captureButton.style.display = 'inline-block';
+                        console.log('Webcam feed started with timestamp:', timestamp);
+                    } else {
+                        alert(data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error starting camera:', error);
+                    alert('Failed to start camera. Please try again.');
+                });
+        });
+
+        captureButton.addEventListener('click', () => {
+            fetch('/capture_image', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        updateUI(data);
+                        updateEmotionChart(data.emotion);
+                        document.querySelector('.emotion-history').style.display = 'block';
+                    } else {
+                        alert(data.message);
+                        videoFeed.src = "";
+                        videoFeed.style.display = 'none';
+                        faceLogo.style.display = 'block';
+                        startButton.style.display = 'inline-block';
+                        captureButton.style.display = 'none';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error capturing image:', error);
+                    alert('Failed to capture image. Please click "Start Camera" to try again.');
+                    videoFeed.src = "";
+                    videoFeed.style.display = 'none';
+                    faceLogo.style.display = 'block';
+                    startButton.style.display = 'inline-block';
+                    captureButton.style.display = 'none';
+                });
+        });
+
+        // Voice Search Functionality
+        voiceSearchButton.addEventListener('click', () => {
+            if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                const recognition = new SpeechRecognition();
+                recognition.lang = 'en-US';
+                recognition.interimResults = false;
+                recognition.maxAlternatives = 1;
+
+                recognition.start();
+                voiceSearchButton.innerHTML = '<i class="fas fa-microphone"></i> Listening...';
+                voiceSearchButton.disabled = true;
+
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    voiceSearchButton.innerHTML = '<i class="fas fa-microphone"></i> Voice Search';
+                    voiceSearchButton.disabled = false;
+                    searchInput.value = transcript;
+                    performSearch(transcript);
+                };
+
+                recognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+                    voiceSearchButton.innerHTML = '<i class="fas fa-microphone"></i> Voice Search';
+                    voiceSearchButton.disabled = false;
+                    if (event.error === 'no-speech') {
+                        alert('No speech detected. Please try again.');
+                    } else if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+                        alert('Microphone access denied. Please allow microphone access in your browser settings.');
+                    } else {
+                        alert('Voice search failed: ' + event.error + '. Please try again.');
+                    }
+                };
+
+                recognition.onend = () => {
+                    voiceSearchButton.innerHTML = '<i class="fas fa-microphone"></i> Voice Search';
+                    voiceSearchButton.disabled = false;
+                };
+            } else {
+                alert('Voice search is not supported in your browser. Please use the search bar.');
+            }
+        });
+
+        // Search Functionality
+        searchButton.addEventListener('click', () => {
+            const query = searchInput.value.trim();
+            if (query) {
+                performSearch(query);
+            } else {
+                alert('Please enter a search query.');
+            }
+        });
+
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                searchButton.click();
+            }
+        });
+
+        function performSearch(query) {
+            fetch('/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: query })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        displaySearchResults(data);
+                    } else {
+                        alert(data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error performing search:', error);
+                    alert('Failed to perform search. Please try again.');
+                });
+        }
+
+        function displaySearchResults(data) {
+            const youtubeSearchList = document.getElementById('youtube-search-results');
+            const spotifySearchList = document.getElementById('spotify-search-results');
+            youtubeSearchList.innerHTML = '';
+            spotifySearchList.innerHTML = '';
+
+            videos = [...data.youtube_videos, ...data.spotify_tracks]; // Update the global videos array
+
+            data.youtube_videos.forEach((video, index) => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${video.title} (${video.duration})</span>
+                    <div class="video-actions">
+                        <button class="play-button" data-index="${index}" data-source="youtube-search"><i class="fas fa-play"></i></button>
+                        <button class="like-button" data-video='${JSON.stringify(video)}'><i class="fas fa-heart"></i></button>
+                    </div>
+                `;
+                youtubeSearchList.appendChild(li);
+            });
+
+            data.spotify_tracks.forEach((track, index) => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${track.title} (${track.duration})</span>
+                    <div class="video-actions">
+                        <button class="play-button" data-index="${index}" data-source="spotify-search"><i class="fas fa-play"></i></button>
+                    </div>
+                `;
+                spotifySearchList.appendChild(li);
+            });
+
+            document.querySelector('.search-results').style.display = 'block';
+            document.querySelector('.video-list').style.display = 'none';
+
+            // Show the player section if there are results
+            if (videos.length > 0) {
+                focusTimer.style.display = 'flex';
+                document.querySelector('.player-section').style.display = 'block';
+            }
+
+            attachPlayButtonListeners();
+            attachLikeButtonListeners();
+        }
+
+        function updateUI(data) {
+            document.getElementById('emotion').innerText = data.emotion;
+            document.getElementById('emotion-class').innerText = data.emotion;
+            document.querySelector('.result-section').style.display = 'block';
+
+            const youtubeVideoList = document.getElementById('youtube-video-list');
+            const spotifyTrackList = document.getElementById('spotify-track-list');
+            youtubeVideoList.innerHTML = '';
+            spotifyTrackList.innerHTML = '';
+
+            videos = [...data.youtube_videos, ...data.spotify_tracks];
+
+            data.youtube_videos.forEach((video, index) => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${video.title} (${video.duration})</span>
+                    <div class="video-actions">
+                        <button class="play-button" data-index="${index}" data-source="youtube"><i class="fas fa-play"></i></button>
+                        <button class="like-button" data-video='${JSON.stringify(video)}'><i class="fas fa-heart"></i></button>
+                    </div>
+                `;
+                youtubeVideoList.appendChild(li);
+            });
+
+            data.spotify_tracks.forEach((track, index) => {
+                const adjustedIndex = index + data.youtube_videos.length;
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${track.title} (${track.duration})</span>
+                    <div class="video-actions">
+                        <button class="play-button" data-index="${adjustedIndex}" data-source="spotify"><i class="fas fa-play"></i></button>
+                    </div>
+                `;
+                spotifyTrackList.appendChild(li);
+            });
+
+            document.querySelector('.video-list').style.display = 'block';
+            document.querySelector('.search-results').style.display = 'none';
+
+            if (videos.length > 0) {
+                focusTimer.style.display = 'flex';
+                document.querySelector('.player-section').style.display = 'block';
+                playVideo(0);
+            }
+
+            attachPlayButtonListeners();
+            attachLikeButtonListeners();
+
+            videoFeed.src = "";
+            videoFeed.style.display = 'none';
+            faceLogo.style.display = 'block';
+            startButton.style.display = 'inline-block';
+            captureButton.style.display = 'none';
+        }
+
+        function attachPlayButtonListeners() {
+            document.querySelectorAll('.play-button').forEach(button => {
+                button.addEventListener('click', () => {
+                    const index = parseInt(button.getAttribute('data-index'));
+                    const source = button.getAttribute('data-source');
+                    if (source === 'youtube' || source === 'spotify') {
+                        playVideo(index);
+                    } else if (source === 'youtube-search') {
+                        playVideoFromSearch(index, 'youtube');
+                    } else if (source === 'spotify-search') {
+                        playVideoFromSearch(index, 'spotify');
+                    }
+                });
+            });
+        }
+
+        function attachLikeButtonListeners() {
+            document.querySelectorAll('.like-button').forEach(button => {
+                button.addEventListener('click', () => {
+                    const video = JSON.parse(button.getAttribute('data-video'));
+                    fetch('/like_video', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(video)
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            const likedList = document.getElementById('liked-videos');
+                            const li = document.createElement('li');
+                            li.innerHTML = `<a href="${video.embed_link}" target="_blank">${video.title}</a>`;
+                            likedList.appendChild(li);
+                            document.querySelector('.liked-videos').style.display = 'block';
+                        } else {
+                            alert(data.message || 'Failed to like video');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error liking video:', error);
+                        alert('Failed to like video');
+                    });
+                });
+            });
+        }
+
+        function playVideo(index) {
+            if (index >= videos.length) {
+                index = 0;
+            }
+            currentVideoIndex = index;
+            const video = videos[index];
+            const isSpotify = video.source === 'Spotify';
+
+            // Update the player source
+            musicPlayer.src = ''; // Clear the current source to force reload
+            musicPlayer.src = video.embed_link;
+            document.getElementById('song-title').innerText = video.title;
+
+            // Show autoplay notice for Spotify tracks
+            autoplayNotice.style.display = isSpotify ? 'block' : 'none';
+
+            // For YouTube, attempt to play automatically
+            if (!isSpotify) {
+                musicPlayer.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+            }
+        }
+
+        function playVideoFromSearch(index, source) {
+            const videoList = source === 'youtube' ? document.getElementById('youtube-search-results').children : document.getElementById('spotify-search-results').children;
+            const videoData = source === 'youtube' ? JSON.parse(videoList[index].querySelector('.like-button')?.getAttribute('data-video') || '{}') : videos[document.getElementById('youtube-search-results').children.length + index];
+            
+            if (videoData && videoData.embed_link) {
+                const isSpotify = videoData.source === 'Spotify';
+                musicPlayer.src = ''; // Clear the current source to force reload
+                musicPlayer.src = videoData.embed_link;
+                document.getElementById('song-title').innerText = videoData.title;
+                document.querySelector('.player-section').style.display = 'block';
+
+                // Show autoplay notice for Spotify tracks
+                autoplayNotice.style.display = isSpotify ? 'block' : 'none';
+
+                // For YouTube, attempt to play automatically
+                if (!isSpotify) {
+                    musicPlayer.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+                }
+            } else {
+                alert("Unable to play this track. Please try another one.");
+            }
+        }
+
+        window.addEventListener('message', (event) => {
+            if (event.data === 'ENDED') {
+                currentVideoIndex++;
+                playVideo(currentVideoIndex);
+            } else if (event.data && event.data.error) {
+                console.error('Playback error:', event.data.error);
+                alert(`Failed to play "${videos[currentVideoIndex].title}". Skipping to the next video.`);
+                currentVideoIndex++;
+                playVideo(currentVideoIndex);
+            }
+        });
+
+        const themeToggle = document.getElementById('theme-toggle');
+        themeToggle.addEventListener('click', () => {
+            document.body.classList.toggle('dark-theme');
+            document.body.classList.toggle('light-theme');
+            themeToggle.innerHTML = document.body.classList.contains('dark-theme') ? '<i class="fas fa-adjust"></i> Theme' : '<i class="fas fa-adjust"></i> Theme';
+        });
+    </script>
+</body>
+</html>
