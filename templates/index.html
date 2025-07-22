@@ -8,6 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@2.3.8/dist/purify.min.js"></script>
 </head>
 <body class="dark-theme">
   <div class="container">
@@ -17,12 +18,12 @@
       <div class="header-controls">
         <div class="focus-timer">
           <h4 class="timer-heading">Focus Mode Timer: <span id="total-time">0:00:00</span></h4>
-          <button id="play-pause"><i class="fas fa-play"></i> Start</button>
-          <button id="reset-timer"><i class="fas fa-redo"></i> Reset</button>
+          <button id="play-pause" aria-label="Start or pause timer"><i class="fas fa-play"></i> Start</button>
+          <button id="reset-timer" aria-label="Reset timer"><i class="fas fa-redo"></i> Reset</button>
         </div>
         <div class="header-buttons">
-          <button id="theme-toggle"><i class="fas fa-adjust"></i> Theme</button>
-          <button id="todo-toggle"><i class="fas fa-tasks"></i> To-Do</button>
+          <button id="theme-toggle" aria-label="Toggle theme"><i class="fas fa-adjust"></i> Theme</button>
+          <button id="todo-toggle" aria-label="Open To-Do panel"><i class="fas fa-tasks"></i> To-Do</button>
         </div>
       </div>
     </header>
@@ -34,24 +35,36 @@
             <input type="text" id="search-input" placeholder="Search for a song or artist..." aria-label="Search for music">
             <button id="search-button" aria-label="Search"><i class="fas fa-search"></i></button>
           </div>
-          <button id="voice-search"><i class="fas fa-microphone"></i> Voice Search</button>
+          <button id="voice-search" aria-label="Start voice search"><i class="fas fa-microphone"></i> Voice Search</button>
         </div>
         <div class="webcam-section">
           <h2><i class="fas fa-camera"></i> Your Webcam Feed</h2>
           <div class="camera-controls">
-            <button id="start-camera"><i class="fas fa-play"></i> Start Camera</button>
-            <button id="capture-image" style="display: none;"><i class="fas fa-camera-retro"></i> Capture Image</button>
+            <button id="start-camera" aria-label="Start webcam"><i class="fas fa-play"></i> Start Camera</button>
+            <button id="capture-image" style="display: none;" aria-label="Capture image for emotion detection"><i class="fas fa-camera-retro"></i> Capture Image</button>
+            <select id="manual-emotion" style="display: none;" aria-label="Manually select emotion">
+              <option value="" disabled selected>Select an emotion</option>
+              <option value="angry">Angry</option>
+              <option value="disgust">Disgust</option>
+              <option value="fear">Fear</option>
+              <option value="happy">Happy</option>
+              <option value="sad">Sad</option>
+              <option value="surprise">Surprise</option>
+              <option value="neutral">Neutral</option>
+            </select>
           </div>
           <div class="webcam-container">
             <img id="video-feed" src="" alt="Webcam Feed" style="display: none;">
             <img id="face-logo" src="{{ url_for('static', filename='face_logo.png') }}" alt="Webcam Placeholder">
           </div>
+          <div class="loading-spinner" style="display: none;">Loading...</div>
         </div>
         <div class="result-section" style="display: none;">
           <h2><i class="fas fa-smile"></i> Detected Mood: <span id="emotion">None</span> (Class: <span id="emotion-class">None</span>)</h2>
         </div>
         <div class="emotion-history" style="display: none;">
           <h2><i class="fas fa-chart-bar"></i> Emotion History</h2>
+          <button id="reset-emotion-history" aria-label="Reset emotion history"><i class="fas fa-redo"></i> Reset History</button>
           <canvas id="emotion-chart" aria-label="Emotion history chart"></canvas>
         </div>
       </section>
@@ -120,24 +133,29 @@
 
   <script>
     // Global variables
-    const videoFeed = document.getElementById('video-feed');
-    const faceLogo = document.getElementById('face-logo');
-    const startButton = document.getElementById('start-camera');
-    const captureButton = document.getElementById('capture-image');
-    const voiceSearchButton = document.getElementById('voice-search');
-    const searchInput = document.getElementById('search-input');
-    const searchButton = document.getElementById('search-button');
-    const musicPlayer = document.getElementById('music-player');
-    const playPauseButton = document.getElementById('play-pause');
-    const totalTimeDisplay = document.getElementById('total-time');
-    const resetTimerButton = document.getElementById('reset-timer');
-    const todoPanel = document.getElementById('todo-panel');
-    const todoToggle = document.getElementById('todo-toggle');
-    const todoClose = document.getElementById('todo-close');
-    const todoInput = document.getElementById('todo-input');
-    const todoAdd = document.getElementById('todo-add');
-    const todoList = document.getElementById('todo-list');
-    const autoplayNotice = document.getElementById('autoplay-notice');
+    const elements = {
+      videoFeed: document.getElementById('video-feed'),
+      faceLogo: document.getElementById('face-logo'),
+      startButton: document.getElementById('start-camera'),
+      captureButton: document.getElementById('capture-image'),
+      manualEmotion: document.getElementById('manual-emotion'),
+      voiceSearchButton: document.getElementById('voice-search'),
+      searchInput: document.getElementById('search-input'),
+      searchButton: document.getElementById('search-button'),
+      musicPlayer: document.getElementById('music-player'),
+      playPauseButton: document.getElementById('play-pause'),
+      totalTimeDisplay: document.getElementById('total-time'),
+      resetTimerButton: document.getElementById('reset-timer'),
+      todoPanel: document.getElementById('todo-panel'),
+      todoToggle: document.getElementById('todo-toggle'),
+      todoClose: document.getElementById('todo-close'),
+      todoInput: document.getElementById('todo-input'),
+      todoAdd: document.getElementById('todo-add'),
+      todoList: document.getElementById('todo-list'),
+      autoplayNotice: document.getElementById('autoplay-notice'),
+      resetEmotionHistory: document.getElementById('reset-emotion-history'),
+      loadingSpinner: document.querySelector('.loading-spinner')
+    };
     let isPlaying = false;
     let currentVideoIndex = 0;
     let videos = [];
@@ -154,9 +172,7 @@
       ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral'].forEach(emotion => {
         emotionCounts[emotion] = 0;
       });
-      emotionHistory.forEach(entry => {
-        emotionCounts[entry.emotion]++;
-      });
+      emotionHistory.forEach(entry => emotionCounts[entry.emotion]++);
 
       emotionChart = new Chart(ctx, {
         type: 'bar',
@@ -165,12 +181,8 @@
           datasets: [{
             label: 'Emotion Frequency',
             data: Object.values(emotionCounts),
-            backgroundColor: [
-              '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF'
-            ],
-            borderColor: [
-              '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF'
-            ],
+            backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF'],
+            borderColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#C9CBCF'],
             borderWidth: 1
           }]
         },
@@ -179,26 +191,29 @@
             y: { beginAtZero: true, title: { display: true, text: 'Frequency' } },
             x: { title: { display: true, text: 'Emotion' } }
           },
-          plugins: {
-            legend: { display: false },
-            tooltip: { enabled: true }
-          }
+          plugins: { legend: { display: false }, tooltip: { enabled: true } }
         }
       });
     }
 
     function updateEmotionChart(emotion) {
+      emotionHistory = emotionHistory.slice(-100); // Limit to last 100 entries
       emotionHistory.push({ emotion, timestamp: Date.now() });
       localStorage.setItem('emotionHistory', JSON.stringify(emotionHistory));
       const emotionCounts = {};
       ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral'].forEach(emotion => {
         emotionCounts[emotion] = 0;
       });
-      emotionHistory.forEach(entry => {
-        emotionCounts[entry.emotion]++;
-      });
+      emotionHistory.forEach(entry => emotionCounts[entry.emotion]++);
       emotionChart.data.datasets[0].data = Object.values(emotionCounts);
       emotionChart.update();
+    }
+
+    function resetEmotionHistory() {
+      emotionHistory = [];
+      localStorage.setItem('emotionHistory', JSON.stringify(emotionHistory));
+      updateEmotionChart('none');
+      document.querySelector('.emotion-history').style.display = 'none';
     }
 
     // Focus Timer
@@ -208,15 +223,15 @@
       const hours = Math.floor(totalTime / 3600);
       const minutes = Math.floor((totalTime % 3600) / 60);
       const seconds = totalTime % 60;
-      totalTimeDisplay.innerText = `${hours}:${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+      elements.totalTimeDisplay.innerText = `${hours}:${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
     }
 
     function startTimer() {
       if (!timerRunning) {
         timerInterval = setInterval(updateTimer, 1000);
         timerRunning = true;
-        playPauseButton.innerHTML = '<i class="fas fa-pause"></i> Pause';
-        playPauseButton.classList.add('glow');
+        elements.playPauseButton.innerHTML = '<i class="fas fa-pause"></i> Pause';
+        elements.playPauseButton.classList.add('glow');
       }
     }
 
@@ -224,8 +239,8 @@
       if (timerRunning) {
         clearInterval(timerInterval);
         timerRunning = false;
-        playPauseButton.innerHTML = '<i class="fas fa-play"></i> Start';
-        playPauseButton.classList.remove('glow');
+        elements.playPauseButton.innerHTML = '<i class="fas fa-play"></i> Start';
+        elements.playPauseButton.classList.remove('glow');
       }
     }
 
@@ -236,28 +251,25 @@
       updateTimer();
     }
 
-    playPauseButton.addEventListener('click', () => {
-      timerRunning ? stopTimer() : startTimer();
-    });
-
-    resetTimerButton.addEventListener('click', resetTimer);
+    elements.playPauseButton.addEventListener('click', () => timerRunning ? stopTimer() : startTimer());
+    elements.resetTimerButton.addEventListener('click', resetTimer);
 
     // To-Do List
     function loadTodos() {
       const todos = JSON.parse(localStorage.getItem('todos')) || [];
-      todoList.innerHTML = '';
+      elements.todoList.innerHTML = '';
       todos.forEach((taskObj, index) => {
         const task = typeof taskObj === 'string' ? { text: taskObj, completed: false } : taskObj;
         const li = document.createElement('li');
         li.innerHTML = `
-          <input type="checkbox" class="task-checkbox" ${task.completed ? 'checked' : ''} aria-label="Toggle task completion">
-          <span class="task-text" contenteditable="false" style="${task.completed ? 'text-decoration: line-through;' : ''}">${task.text}</span>
+          <input type="checkbox" class="task-checkbox" ${task.completed ? 'checked' : ''} aria-label="Toggle task completion for ${task.text}">
+          <span class="task-text" contenteditable="false" style="${task.completed ? 'text-decoration: line-through;' : ''}">${DOMPurify.sanitize(task.text)}</span>
           <div class="task-actions">
             <button class="edit-task" aria-label="Edit task"><i class="fas fa-edit"></i></button>
             <button class="delete-task" aria-label="Delete task"><i class="fas fa-trash"></i></button>
           </div>
         `;
-        todoList.appendChild(li);
+        elements.todoList.appendChild(li);
 
         li.querySelector('.task-checkbox').addEventListener('change', (e) => {
           const taskText = li.querySelector('.task-text');
@@ -271,7 +283,7 @@
           if (taskText.isContentEditable) {
             taskText.contentEditable = false;
             taskText.classList.remove('editing');
-            todos[index].text = taskText.innerText;
+            todos[index].text = DOMPurify.sanitize(taskText.innerText);
             localStorage.setItem('todos', JSON.stringify(todos));
           } else {
             taskText.contentEditable = true;
@@ -288,76 +300,115 @@
       });
     }
 
-    todoAdd.addEventListener('click', () => {
-      const task = todoInput.value.trim();
+    elements.todoAdd.addEventListener('click', () => {
+      const task = DOMPurify.sanitize(elements.todoInput.value.trim());
       if (task) {
         const todos = JSON.parse(localStorage.getItem('todos')) || [];
         todos.push({ text: task, completed: false });
         localStorage.setItem('todos', JSON.stringify(todos));
-        todoInput.value = '';
+        elements.todoInput.value = '';
         loadTodos();
       }
     });
 
-    todoInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') todoAdd.click();
+    elements.todoInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') elements.todoAdd.click();
     });
 
-    todoToggle.addEventListener('click', () => todoPanel.classList.add('open'));
-    todoClose.addEventListener('click', () => todoPanel.classList.remove('open'));
+    elements.todoToggle.addEventListener('click', () => elements.todoPanel.classList.add('open'));
+    elements.todoClose.addEventListener('click', () => elements.todoPanel.classList.remove('open'));
 
     // Webcam
-    startButton.addEventListener('click', () => {
-      videoFeed.src = '';
+    elements.startButton.addEventListener('click', () => {
+      elements.videoFeed.src = '';
+      elements.loadingSpinner.style.display = 'block';
       fetch('/start_camera', { method: 'POST' })
         .then(response => response.json())
         .then(data => {
+          elements.loadingSpinner.style.display = 'none';
           if (data.status === 'success') {
-            videoFeed.src = `${window.location.origin}/video_feed?t=${new Date().getTime()}`;
-            videoFeed.style.display = 'block';
-            faceLogo.style.display = 'none';
-            startButton.style.display = 'none';
-            captureButton.style.display = 'inline-block';
+            elements.videoFeed.src = `${window.location.origin}/video_feed?t=${new Date().getTime()}`;
+            elements.videoFeed.style.display = 'block';
+            elements.faceLogo.style.display = 'none';
+            elements.startButton.style.display = 'none';
+            elements.captureButton.style.display = 'inline-block';
+            elements.manualEmotion.style.display = 'none';
           } else {
             alert(data.message);
+            elements.manualEmotion.style.display = 'inline-block';
           }
         })
         .catch(error => {
+          elements.loadingSpinner.style.display = 'none';
           console.error('Error starting camera:', error);
-          alert('Failed to start camera. Please try again.');
+          alert('Failed to start camera. Please try again or select an emotion manually.');
+          elements.manualEmotion.style.display = 'inline-block';
         });
     });
 
-    captureButton.addEventListener('click', () => {
+    elements.captureButton.addEventListener('click', () => {
+      elements.loadingSpinner.style.display = 'block';
       fetch('/capture_image', { method: 'POST' })
         .then(response => response.json())
         .then(data => {
+          elements.loadingSpinner.style.display = 'none';
           if (data.status === 'success') {
             updateUI(data);
             updateEmotionChart(data.emotion);
-            document.querySelector('.emotion-history').style.display = 'block';
+            elements.emotionHistory.style.display = 'block';
           } else {
             alert(data.message);
             resetWebcam();
+            elements.manualEmotion.style.display = 'inline-block';
           }
         })
         .catch(error => {
+          elements.loadingSpinner.style.display = 'none';
           console.error('Error capturing image:', error);
-          alert('Failed to capture image. Please click "Start Camera" to try again.');
+          alert('Failed to capture image. Please try again or select an emotion manually.');
           resetWebcam();
+          elements.manualEmotion.style.display = 'inline-block';
         });
     });
 
+    elements.manualEmotion.addEventListener('change', () => {
+      const emotion = elements.manualEmotion.value;
+      if (emotion) {
+        elements.loadingSpinner.style.display = 'block';
+        fetch('/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: `${emotion} music playlist` })
+        })
+          .then(response => response.json())
+          .then(data => {
+            elements.loadingSpinner.style.display = 'none';
+            if (data.status === 'success') {
+              updateUI({ emotion, youtube_videos: data.youtube_videos, spotify_tracks: data.spotify_tracks });
+              updateEmotionChart(emotion);
+              elements.emotionHistory.style.display = 'block';
+            } else {
+              alert(data.message);
+            }
+          })
+          .catch(error => {
+            elements.loadingSpinner.style.display = 'none';
+            console.error('Error with manual emotion:', error);
+            alert('Failed to fetch music for selected emotion.');
+          });
+      }
+    });
+
     function resetWebcam() {
-      videoFeed.src = '';
-      videoFeed.style.display = 'none';
-      faceLogo.style.display = 'block';
-      startButton.style.display = 'inline-block';
-      captureButton.style.display = 'none';
+      elements.videoFeed.src = '';
+      elements.videoFeed.style.display = 'none';
+      elements.faceLogo.style.display = 'block';
+      elements.startButton.style.display = 'inline-block';
+      elements.captureButton.style.display = 'none';
     }
 
     // Voice Search
-    voiceSearchButton.addEventListener('click', () => {
+    elements.voiceSearchButton.addEventListener('click', () => {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition) {
         alert('Voice search is not supported in your browser. Please use the search bar.');
@@ -370,12 +421,12 @@
       recognition.maxAlternatives = 1;
 
       recognition.start();
-      voiceSearchButton.innerHTML = '<i class="fas fa-microphone"></i> Listening...';
-      voiceSearchButton.disabled = true;
+      elements.voiceSearchButton.innerHTML = '<i class="fas fa-microphone"></i> Listening...';
+      elements.voiceSearchButton.disabled = true;
 
       recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        searchInput.value = transcript;
+        const transcript = DOMPurify.sanitize(event.results[0][0].transcript);
+        elements.searchInput.value = transcript;
         performSearch(transcript);
         resetVoiceSearch();
       };
@@ -395,23 +446,24 @@
       recognition.onend = resetVoiceSearch;
 
       function resetVoiceSearch() {
-        voiceSearchButton.innerHTML = '<i class="fas fa-microphone"></i> Voice Search';
-        voiceSearchButton.disabled = false;
+        elements.voiceSearchButton.innerHTML = '<i class="fas fa-microphone"></i> Voice Search';
+        elements.voiceSearchButton.disabled = false;
       }
     });
 
     // Search
-    searchButton.addEventListener('click', () => {
-      const query = searchInput.value.trim();
+    elements.searchButton.addEventListener('click', () => {
+      const query = DOMPurify.sanitize(elements.searchInput.value.trim());
       if (query) performSearch(query);
       else alert('Please enter a search query.');
     });
 
-    searchInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') searchButton.click();
+    elements.searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') elements.searchButton.click();
     });
 
     function performSearch(query) {
+      elements.loadingSpinner.style.display = 'block';
       fetch('/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -419,6 +471,7 @@
       })
         .then(response => response.json())
         .then(data => {
+          elements.loadingSpinner.style.display = 'none';
           if (data.status === 'success') {
             displaySearchResults(data);
           } else {
@@ -426,6 +479,7 @@
           }
         })
         .catch(error => {
+          elements.loadingSpinner.style.display = 'none';
           console.error('Error performing search:', error);
           alert('Failed to perform search. Please try again.');
         });
@@ -441,10 +495,10 @@
       data.youtube_videos.forEach((video, index) => {
         const li = document.createElement('li');
         li.innerHTML = `
-          <span>${video.title} (${video.duration})</span>
+          <span>${DOMPurify.sanitize(video.title)} (${video.duration})</span>
           <div class="video-actions">
-            <button class="play-button" data-index="${index}" data-source="youtube-search"><i class="fas fa-play"></i></button>
-            <button class="like-button" data-video='${JSON.stringify(video)}'><i class="fas fa-heart"></i></button>
+            <button class="play-button" data-index="${index}" data-source="youtube-search" aria-label="Play ${video.title}"><i class="fas fa-play"></i></button>
+            <button class="like-button" data-video='${JSON.stringify(video)}' aria-label="Like ${video.title}"><i class="fas fa-heart"></i></button>
           </div>
         `;
         youtubeSearchList.appendChild(li);
@@ -453,9 +507,9 @@
       data.spotify_tracks.forEach((track, index) => {
         const li = document.createElement('li');
         li.innerHTML = `
-          <span>${track.title} (${track.duration})</span>
+          <span>${DOMPurify.sanitize(track.title)} (${track.duration})</span>
           <div class="video-actions">
-            <button class="play-button" data-index="${index}" data-source="spotify-search"><i class="fas fa-play"></i></button>
+            <button class="play-button" data-index="${index}" data-source="spotify-search" aria-label="Play ${track.title}"><i class="fas fa-play"></i></button>
           </div>
         `;
         spotifySearchList.appendChild(li);
@@ -471,8 +525,8 @@
     }
 
     function updateUI(data) {
-      document.getElementById('emotion').innerText = data.emotion;
-      document.getElementById('emotion-class').innerText = data.emotion;
+      document.getElementById('emotion').innerText = DOMPurify.sanitize(data.emotion);
+      document.getElementById('emotion-class').innerText = DOMPurify.sanitize(data.emotion);
       document.querySelector('.result-section').style.display = 'block';
 
       const youtubeVideoList = document.getElementById('youtube-video-list');
@@ -484,10 +538,10 @@
       data.youtube_videos.forEach((video, index) => {
         const li = document.createElement('li');
         li.innerHTML = `
-          <span>${video.title} (${video.duration})</span>
+          <span>${DOMPurify.sanitize(video.title)} (${video.duration})</span>
           <div class="video-actions">
-            <button class="play-button" data-index="${index}" data-source="youtube"><i class="fas fa-play"></i></button>
-            <button class="like-button" data-video='${JSON.stringify(video)}'><i class="fas fa-heart"></i></button>
+            <button class="play-button" data-index="${index}" data-source="youtube" aria-label="Play ${video.title}"><i class="fas fa-play"></i></button>
+            <button class="like-button" data-video='${JSON.stringify(video)}' aria-label="Like ${video.title}"><i class="fas fa-heart"></i></button>
           </div>
         `;
         youtubeVideoList.appendChild(li);
@@ -497,9 +551,9 @@
         const adjustedIndex = index + data.youtube_videos.length;
         const li = document.createElement('li');
         li.innerHTML = `
-          <span>${track.title} (${track.duration})</span>
+          <span>${DOMPurify.sanitize(track.title)} (${track.duration})</span>
           <div class="video-actions">
-            <button class="play-button" data-index="${adjustedIndex}" data-source="spotify"><i class="fas fa-play"></i></button>
+            <button class="play-button" data-index="${adjustedIndex}" data-source="spotify" aria-label="Play ${track.title}"><i class="fas fa-play"></i></button>
           </div>
         `;
         spotifyTrackList.appendChild(li);
@@ -519,45 +573,51 @@
 
     function attachPlayButtonListeners() {
       document.querySelectorAll('.play-button').forEach(button => {
-        button.addEventListener('click', () => {
-          const index = parseInt(button.getAttribute('data-index'));
-          const source = button.getAttribute('data-source');
-          if (source === 'youtube' || source === 'spotify') {
-            playVideo(index);
-          } else {
-            playVideoFromSearch(index, source.split('-')[0]);
-          }
-        });
+        button.removeEventListener('click', handlePlayButton); // Prevent duplicate listeners
+        button.addEventListener('click', handlePlayButton);
       });
+    }
+
+    function handlePlayButton() {
+      const index = parseInt(this.getAttribute('data-index'));
+      const source = this.getAttribute('data-source');
+      if (source === 'youtube' || source === 'spotify') {
+        playVideo(index);
+      } else {
+        playVideoFromSearch(index, source.split('-')[0]);
+      }
     }
 
     function attachLikeButtonListeners() {
       document.querySelectorAll('.like-button').forEach(button => {
-        button.addEventListener('click', () => {
-          const video = JSON.parse(button.getAttribute('data-video'));
-          fetch('/like_video', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(video)
-          })
-            .then(response => response.json())
-            .then(data => {
-              if (data.status === 'success') {
-                const likedList = document.getElementById('liked-videos');
-                const li = document.createElement('li');
-                li.innerHTML = `<a href="${video.embed_link}" target="_blank" aria-label="Play ${video.title}">${video.title}</a>`;
-                likedList.appendChild(li);
-                document.querySelector('.liked-videos').style.display = 'block';
-              } else {
-                alert(data.message || 'Failed to like video');
-              }
-            })
-            .catch(error => {
-              console.error('Error liking video:', error);
-              alert('Failed to like video');
-            });
-        });
+        button.removeEventListener('click', handleLikeButton); // Prevent duplicate listeners
+        button.addEventListener('click', handleLikeButton);
       });
+    }
+
+    function handleLikeButton() {
+      const video = JSON.parse(this.getAttribute('data-video'));
+      fetch('/like_video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(video)
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.status === 'success') {
+            const likedList = document.getElementById('liked-videos');
+            const li = document.createElement('li');
+            li.innerHTML = `<a href="${video.embed_link}" target="_blank" aria-label="Play ${DOMPurify.sanitize(video.title)}">${DOMPurify.sanitize(video.title)}</a>`;
+            likedList.appendChild(li);
+            document.querySelector('.liked-videos').style.display = 'block';
+          } else {
+            alert(data.message || 'Failed to like video');
+          }
+        })
+        .catch(error => {
+          console.error('Error liking video:', error);
+          alert('Failed to like video');
+        });
     }
 
     function playVideo(index) {
@@ -566,12 +626,16 @@
       const video = videos[index];
       const isSpotify = video.source === 'Spotify';
 
-      musicPlayer.src = video.embed_link;
-      document.getElementById('song-title').innerText = video.title;
-      autoplayNotice.style.display = isSpotify ? 'block' : 'none';
+      elements.musicPlayer.src = video.embed_link;
+      elements.songTitle.innerText = DOMPurify.sanitize(video.title);
+      elements.autoplayNotice.style.display = isSpotify ? 'block' : 'none';
 
       if (!isSpotify) {
-        musicPlayer.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+        setTimeout(() => {
+          if (!elements.musicPlayer.contentWindow.document.querySelector('video')?.playing) {
+            elements.autoplayNotice.style.display = 'block';
+          }
+        }, 2000);
       }
     }
 
@@ -580,12 +644,16 @@
       const videoData = videos[index + offset];
       if (videoData && videoData.embed_link) {
         const isSpotify = videoData.source === 'Spotify';
-        musicPlayer.src = videoData.embed_link;
-        document.getElementById('song-title').innerText = videoData.title;
+        elements.musicPlayer.src = videoData.embed_link;
+        elements.songTitle.innerText = DOMPurify.sanitize(videoData.title);
         document.querySelector('.player-section').style.display = 'block';
-        autoplayNotice.style.display = isSpotify ? 'block' : 'none';
+        elements.autoplayNotice.style.display = isSpotify ? 'block' : 'none';
         if (!isSpotify) {
-          musicPlayer.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+          setTimeout(() => {
+            if (!elements.musicPlayer.contentWindow.document.querySelector('video')?.playing) {
+              elements.autoplayNotice.style.display = 'block';
+            }
+          }, 2000);
         }
       } else {
         alert('Unable to play this track. Please try another one.');
@@ -598,21 +666,42 @@
         playVideo(currentVideoIndex);
       } else if (event.data?.error) {
         console.error('Playback error:', event.data.error);
-        alert(`Failed to play "${videos[currentVideoIndex].title}". Skipping to the next video.`);
+        alert(`Failed to play "${DOMPurify.sanitize(videos[currentVideoIndex].title)}". Skipping to the next video.`);
         currentVideoIndex++;
         playVideo(currentVideoIndex);
       }
     });
 
-    document.getElementById('theme-toggle').addEventListener('click', () => {
+    elements.themeToggle.addEventListener('click', () => {
       document.body.classList.toggle('dark-theme');
       document.body.classList.toggle('light-theme');
     });
 
+    elements.resetEmotionHistory.addEventListener('click', () => {
+      if (confirm('Are you sure you want to reset emotion history?')) {
+        resetEmotionHistory();
+      }
+    });
+
     // Initialize
-    updateTimer();
-    loadTodos();
-    initializeEmotionChart();
+    async function initialize() {
+      updateTimer();
+      loadTodos();
+      initializeEmotionChart();
+      try {
+        const response = await fetch('/get_emotion_history');
+        const data = await response.json();
+        if (data.emotion_history) {
+          emotionHistory = data.emotion_history;
+          localStorage.setItem('emotionHistory', JSON.stringify(emotionHistory));
+          updateEmotionChart('none');
+        }
+      } catch (error) {
+        console.error('Error fetching emotion history:', error);
+      }
+    }
+
+    initialize();
   </script>
 </body>
 </html>
