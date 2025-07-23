@@ -1,9 +1,0 @@
-flask
-opencv-python
-numpy
-tensorflow
-google-api-python-client
-spotipy
-python-dotenv
-isodate
-gdown
